@@ -1,0 +1,179 @@
+---
+title: "Social Network Analysis: Lab 1"
+author: "Shreyans Kothari"
+date: "February 19, 2022"
+output: html_document
+---
+ 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(igraph)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(statnet)
+options(digits=2)
+```
+__UNI: SK4819__
+
+****
+
+#### 1. Develop a hypothesis about how some ego-network measure (e.g., degree/size, density, diversity, average-level of alters, homophily, structural holes, or brokerage) may be related to some other variable of interest.
+I want to explore how a student's ego-network size/degree affects their final exam scores. I hypothesize that bigger the students' networks in a class, the more likely they are to score well in an exam in that class: there is be a positive relationship between degree of ego-network and score on the final exam. 
+
+****
+
+#### 2. Explain why you think these two variables should be related.
+I suspect that students who have bigger networks (indicated by degree of network- this could be an indication for extrovert-ness) would be more likely to participate in class (speaking up more, and more willing to share their thoughts, ideas, and opinions). This would lead to a deeper engagement with the material, leading to an improved score on their exam. Additionally, having more connections with other students would also provide the students more platforms to clear their doubts and better understand the concepts- be it through study groups or peer tutoring, etc.
+
+For this analysis, I am using 'Sociability in an Undergraduate Social Networks Course, 2011'.
+
+```{r}
+net_size <- read.csv('Classroom_2011_W4.csv')
+net_attr <- read.csv('Classroom_2011_Attributes.csv')
+```
+
+Since I want to analyze whether students' networks would translate into higher grade on the exam, it is important that I use the W4 data set over the W1 data set. By the time W4 data was collected, students would have had enough time to get to know their classmates- thus, more opportunities for students to connect, collaborate, study, and learn together.
+
+****
+
+#### 3.Tell me about your variables.  What is your dependent variable?  What are your independent variables?  How are they coded?  How are they recoded? How are the calculated, if appropriate? 
+1) __Dependent Variable__: My Dependent variable is the students' grade on their final exam (Exam 3). This score ranges from 0 to 100. I chose to utilize the score on the final exam as my outcome of interest because by the time the students had to take the final exam, they would have had enough time to connect with other students. Since the analysis seeks to explore how increased connections between students would translate into better grades, analyzing scores on the first two exams would fail to capture the relationships students probably formed towards the end or mid-way through the class. 
+
+```{r, echo=FALSE}
+net_attr %>% ggplot(aes(E3)) + geom_bar(fill = 'gray4') + 
+  labs(x = "Percentage scored in E3",
+       y = "Count") + 
+  scale_x_continuous(breaks = seq(0, 100, 10)) + 
+  theme_minimal() 
+```
+
+2) __Main Independent Variable__: My main independent variable is the size/degree of networks of the students. Here, the direction or the strength of the relationship isn't as important as the number of edges on each node (the number of ties/connections each student has). Students who are more outgoing would likely have a lot more undirected ties than a less outgoing student- but this might not be the case for directed ties.
+Thus, I chose to use undirected ties to measure the ego-network degree. I calculated the degree as such:
+```{r}
+x <- as.matrix(net_size[,-1])
+rownames(x) <- net_size[,1]
+degree_x <- graph.adjacency(x, mode ="undirected", weighted = NULL)
+net_attr$degree = igraph::degree(degree_x)
+```
+
+
+```{r, echo=FALSE}
+net_attr %>% ggplot(aes(degree)) + geom_bar() + 
+  labs(x = "Degree of Ego-Network",
+       y = "Count") + 
+  scale_x_continuous(breaks = seq(0, 50, 10)) + 
+  theme_minimal() 
+```
+
+3) __Additional Variables__: Additionally, the data set also contains:
+a) Student's self-identified ethnicity: 1  =  White (Caucasian); 2  = Hispanic; 3 = 
+Asian; 4 = African-American or other
+b) Student's self-identified gender: 1 = Male; 2 = Female
+c) Attend1, Attend2, and Attend3: Percentage of in-class quizzes completed in different weeks 1 = before first exam; 2 = between first and second exam; 3 = between second and third exam
+d) E1 and E2: Percentage scored on the first and second exams respectively
+e) Paper: How much the students scored on a group term reserch paper 
+
+****
+
+#### 4. Present your initial results from your first few models.  What do they indicated about your hypothesis?
+##### Model 1
+
+First, I plot the relationship between score on Exam 3 and degree. There seems to be positive relationship between the two variables.
+
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+ggplot(net_attr, aes(degree, E3)) + 
+  geom_point() + geom_smooth(method = "lm", se = FALSE, color = "red") +
+  theme_minimal() +
+  labs(x = "Degree / Size of Network",
+       y = "Percentage scored in Exam 3")
+```
+
+I further explore this by running a linear model to estimate the significance and strength of this relationship.
+```{r}
+summary(lm(E3 ~ degree, data=net_attr)) 
+```
+From this regression output, we can see that there is a positive relationship between the grade the students scored on their final exam, and their degree of networks. The degree variable is also statistically significant. The first model supports my hypothesis. However, the effect of degree on Exam 3 scores is quite small. The Adj R-Square is quite low: a lot of the variation in the output is not being explained by the model. This is a very simple model and in order to draw causal claims, we need to control for many additional variables.
+
+****
+
+#### 5. Consider alternate specifications of your variables (i.e., recodings of various kinds).  Consider interactions among your variables.
+##### Model 2
+
+In Model 2, I added variables for score on Exam 1, score on Exam 2, and Percentage of in-class quizzes completed in weeks 8-10 (between second and third exams). Maybe the scores students achieve in their initial exams and quizzes are an indicator for how well they will perform later in the class. 
+```{r}
+summary(lm(E3 ~ degree + E1 + E2 + Attend3, data=net_attr)) 
+```
+The model's Adj-R Squared improved by quite a lot. However, there was only a slight change in the coefficient for degree compared to its coefficient estimate in Model 1. According to this model, the score students achieved on their first exam is a stronger indicator for the scores they will achieve on their final exam, compared to their exam 2 scores. Quite counter-intuitively, this model suggests that the percentage of in-class quizzes the students completed in weeks 8-10 (right before the final) is negatively correlated with the score they achieved on their final. However, this is not statitically significant at any level of alpha.
+
+
+
+##### Model 3
+
+Maybe instead of just looking at Attend3, the Percentage of in-class quizzes students completed in weeks 8-10 (between second and third exams), it might be a good idea to utilize the average in-class quizzes the students completed throughout the semester. Most of the times, especially in undergraduate level courses, the best strategy to get a good grade is to continually work on the subject throughout the semester. We can analyze this by averaging Attend1, Attend2, and Attend3.
+Similarly, instead of looking at E1 and E2 separate, maybe we should analyze the average of the two exams and use that to predict what the E3 score could be.
+```{r}
+student <- net_attr %>%
+  mutate(Attend = round((Attend1 + Attend2 + Attend3)/3,2),
+         E12 = round((E1+E2)/2, 2))
+summary(lm(E3 ~ degree + E12 + Attend, data=student)) 
+```
+The model's Adj-R Square improved slightly. There was minimal change in the coefficient of degree. However, the coefficient for E12 (average of E1 and E2) seems exceptionally strong with statistical significance at all levels of alpha. Attend, on the other hand, is not statistically significant.
+
+
+
+##### Model 4
+
+In Model 4, I control for additional variables that are very likely contributing to this relationship. I remove Attend from the model since it was not significant and had minimal effects on the E3 results.
+```{r}
+summary(lm(E3 ~ degree + E12 + as.factor(Ethnicity), data=student)) 
+```
+Here, Ethnicity indicates the ethnicity of the student. 1 indicates White (Caucasian), 2 indicates Hispanic, 3 indicates Asian, and 4 indicates African American or other. Various studies conducted in the past have drawn a correlation between Ethnicity and grades- which, more often than not, results from dissimilar access to opportunities among the population. This data set from an undergraduate class highlights those inequalities. The Adj-R Squared in the model improved even more. 
+
+According to this model, for an African American student with the same size of ego-network and the same average exam score (on the first two exams) as a white student, the African American student's score on the final exam would be, on average, ~12 percentage points less than that of the white student. This model shows that ethnicity is as statistically significant (if not more) as the degree of the ego-networks, but has a stronger influence on the Exam 3 score.
+
+
+
+##### Model 5
+
+In this model, we explore the interaction between Ethnicity and Sex. I created a dummy variable for Female using the provided categorical variable- Gender. I wanted to see if the strong influence of Ethnicity on Exam 3 score had anything to do with the Gender of the student as well. 
+```{r}
+# Creating a dummy variable for Female
+student <- student %>% mutate(Female = ifelse(Gender ==2, 1, 0))
+summary(lm(E3 ~ degree + E12 + Ethnicity*Female, data=student)) 
+```
+We see that the Adj-R Squared improved even more. Ethnicity overall seems a little less statistically significant. The dummy variable for Female has a rather strong effect on our outcome of interest. Additionally, the coefficients for Female and the interaction term between Ethnicity and Female are not significant at all. Maybe these terms are not good indicators of how well the student performs on their final exam at all. We could try including just Female to see the effects of Sex on the final exam score.
+
+
+
+##### Model 6
+
+```{r}
+summary(lm(E3 ~ degree + E12 + as.factor(Ethnicity) + as.factor(Female) , data=student)) 
+```
+In this final model, we regress E3, percentage score on third exam, on degree of ego-network, E12 (the average score on the first two exams), the student's ethnicity, and their sex. The Adj.-R Squared of the model reduced compared to Model 5, but very minimally. The variable for degree and Exam are statistically significant, but don't have a huge effect on the Exam 3 scores. 
+
+Interpreting Ethnicity and Female:
+(a) Ethnicity 2: Holding all other factors constant, on average, a Hispanic male student will score 2.9572 percentage points less than a white male student on the final exam.
+(b) Ethnicity 3: Holding all other factors constant, on average, an Asian male student will score 6.4995 percentage points less than a white male student on the final exam.
+(c) Ethnicity 4: Holding all other factors constant, on average, an African American male student will score 9.7874 percentage points less than a white male student on the final exam.
+(d) Female: Holding all other factors constant, on average, a white student that identifies as female will score 4.7763 percentage points less than a white male student on the final exam.
+
+
+****
+
+#### 6. And give your best conclusion as to whether your initial hypothesis held up - and if not, why not.
+My initial hypothesis did hold up. There seems to be a connection between the degree of ego-network and the grade on the final exam. The variable for degree was statistically significant in all models. However, the effect of degree of networks is quite small compared to other factors such as the Ethnicity of the student and their sex. Additionally, there are a lot more factors that need to be accounted for such as household income, parents' education level, etc that. in order to draw any causal conclusions. This analysis warrants further research on the topic. 
+
+
+****
+
+### Final data set:
+I am including the final data set to allow readers of this report to play around with data and draw their own conclusions. Readers have the ability to sort by different variables to help them draw patterns from the data.
+```{r, echo = FALSE}
+library(DT)
+student %>% select(-Group, -Partic, -Paper, -Attend1, -Attend2, -Attend3) %>% datatable(.)
+```

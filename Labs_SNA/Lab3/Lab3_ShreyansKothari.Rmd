@@ -1,0 +1,258 @@
+---
+title: 'Social Network Analysis: Lab 3'
+author: "Shreyans Kothari"
+date: "4/17/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(R.matlab)
+library(igraph)
+library(dplyr)
+library(tidyverse)
+library(stats)
+library(plm)
+library(ggplot2)
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Importing data
+columbia_fb <- readMat("../Lab3/Columbia2.mat")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Creating igraph object
+attr <- as.data.frame(columbia_fb$local.info)
+colnames(attr) <- c("student", "gender", "major", "sec_major/minor", "dorm", "year", "high_school")
+m = as.matrix(columbia_fb$A)
+fb_graph <- graph.adjacency(m, mode ="undirected", weighted = NULL)
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Adding attributes to data
+V(fb_graph)$student = attr$student[match(V(fb_graph),index(attr))]
+V(fb_graph)$gender = attr$gender[match(V(fb_graph),index(attr))]
+V(fb_graph)$major = attr$major[match(V(fb_graph),index(attr))]
+V(fb_graph)$year = attr$year[match(V(fb_graph),index(attr))]
+V(fb_graph)$dorm = attr$dorm[match(V(fb_graph),index(attr))]
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Filtering data
+
+## Selecting only students
+fb_graph <- delete_vertices(fb_graph, V(fb_graph)$student != 1)
+
+## Removing students from year 2004, 2009, 2010, and missing values
+fb_graph <- delete_vertices(fb_graph, V(fb_graph)$year %in% c(0, 2004, 2009, 2010))
+
+## Removing students with missing gender
+fb_graph <- delete_vertices(fb_graph, V(fb_graph)$gender == 0)
+
+## Remove nodes with no connections
+fb_graph <- delete_vertices(fb_graph, degree(fb_graph)==0)
+
+## Removing Majors that have less than 10 students and missing values
+majors <- c(0, 48,  51,  52,  53,  58,  63,  70,  74,  80,  82,  84,  87,  89,  91,  94,  95,  97,  98, 102, 106, 108, 112, 115, 118, 119, 120, 130, 131, 132, 133)
+#fb_graph <- delete_vertices(fb_graph, V(fb_graph)$major %in% majors)
+
+#major <- data.frame(V(fb_graph)$major) %>% group_by(V(fb_graph)$major) %>% summarise(n())
+
+## Choosing the major with the most nodes
+fb_graph <- delete_vertices(fb_graph, V(fb_graph)$major != 75)
+
+```
+
+
+ 
+## 1) Describe the social network(s) to me, in terms of how it was collected, what it represents and so forth.  Also give me basic topography of the network: the nature of the ties; direction of ties; overall density; and if attributes are with the network, the distribution of the categories and variables of those attributes.
+The dataset contains undirected and unweighted Facebook networks for Columbia University students. It is one of many college-level facebook datasets collected for a study published in 2011. The dataset in total contains facebook network data from 100 different universities- I chose to stick with Columbia University mainly due to the sheer size of the complete dataset.
+
+The data was found as a sparse matrix with the following attributes: a student/faculty status flag (i.e., one represents student, and faculty otherwise- which has more gradation in terms of job), gender, major, second major/minor (if applicable), dorm/house, year, and high school. A connection exists if the nodes are connected on facebook, i.e., if the nodes are "friends" on facebook, where the value is 1 if a tie exists and 0 if it does not. The entire Columbia dataset has a total of 11770 nodes. I picked 4 consecutive graduating classes, 2005 to 2008, to reduce the size of the network. 
+
+Initially, I removed all majors with less than 10 students and tried to run the Girvan-Newman algorithm. However, due to the size of the network (and the massive number of nodes), the community detection algorithm kept running for hours without any result. Thus, I decided to pick a single major from the network- I chose the major which was coded as 75 in the dataset as it had the most number of students/nodes. Despite a lot of searching, I could not locate a codebook which contained the code for each major. So for the context of this report, we will just call the major "major 75", which is very likely a social science major according to Google.
+
+The network density of the facebook friend network for Columbia University students in major 75 is:
+```{r, echo=FALSE}
+graph.density(fb_graph)
+```
+
+The density of the advice network is about 0.022. The range for a network density is between 0 and 1: the density value of 0.022 is towards the lower end of that spectrum. This makes sense because the data contains students from four different years. In any university, you would not expect students to be friends with the entire university, or even their entire year.
+
+### Exploring attributes
+
+#### Gender
+```{r, echo=FALSE}
+gender <- data.frame(V(fb_graph)$gender) %>% group_by(V(fb_graph)$gender) %>% summarise(n())
+colnames(gender) <- c("gender", "freq")
+#gender <- mutate(gender = as.factor(gender))
+gender <- gender %>% mutate(gender = ifelse(gender==1, "Female", "Male"))
+gender %>% 
+  ggplot(aes(as.factor(gender), freq, fill = gender)) + geom_bar(stat = "identity", position = "dodge")+ theme_minimal() + labs(x = "gender",
+                                                                                                                 y = "Count") +
+  theme(legend.position = "none")
+#hist(V(fb_graph)$gender)
+```
+
+The above histogram compares the number of female Columbia students (coded as 1 in the data) to the number of male Columbia students (coded as 2 in the data). As we can see, major 75 has more males than it does females. 
+
+#### Graduation Year
+```{r, echo=FALSE}
+year <- data.frame(V(fb_graph)$year) %>% group_by(V(fb_graph)$year) %>% summarise(n())
+colnames(year) <- c("year", "freq")
+year %>% 
+  ggplot(aes(year, freq, fill = year)) + geom_bar(stat = "identity", position = "dodge")+ theme_minimal() + labs(x = "Year",
+                                                                                                                 y = "Count") +
+  theme(legend.position = "none")
+```
+
+This histogram visualizes the number of students from each year in major 75. The dataset has the least number of students from 2005. This might be because facebook did not allow students from universities other than Harvard to join until 2004- maybe it took a while for the social media platform to catch on in the other schools. After 2005, 2008 has the lowest number of nodes, followed by 2006. 2007 has the most number of nodes in the dataset.
+
+
+  `The dataset can be found here: https://archive.org/details/oxford-2005-facebook-matrix`
+
+___
+
+## 2) Run the Girvan-Newman community detection algorithm.  Then run the random walk community detection algorithm.  
+
+```{r,echo=FALSE}
+set.seed(12)
+```
+
+### Girvan-Newman community detection algorithm
+```{r, echo=FALSE}
+set.seed(12)
+# Girvan-Newman community detection algorithm
+gn = edge.betweenness.community(fb_graph, directed = FALSE)
+
+head(gn)
+```
+ 
+#### Girvan-Newman Visualization
+```{r, echo=FALSE}
+set.seed(12)
+# Community Detection Algorithm Plot with edges
+plot(gn, (fb_graph), layout= layout.davidson.harel, vertex.size=3, curved = F, asp = 0, vertex.label.cex = 0.55, edge.color = rgb(0,0,0,.25), main = "Girvan-Newman")
+```
+
+```{r, include=FALSE}
+set.seed(12)
+# Community Detection Algorithm Plot without edges
+plot(gn, (fb_graph), layout= layout.davidson.harel, vertex.size=3, curved = F, asp = 0, vertex.label.cex = 0.55, edge.color = NA, main = "Girvan-Newman W/O Edges")
+```
+
+#### Summary of the Girvan-Newman membership
+```{r, echo=FALSE}
+memb = data.frame(gn$membership)
+summary(memb)
+```
+
+### Random Walk community detection algorithm
+```{r, echo=FALSE}
+set.seed(12)
+walk = walktrap.community(fb_graph)
+head(walk)
+```
+
+
+#### Random Walk Visualization
+```{r, echo=FALSE}
+set.seed(12)
+# random walk with edges
+plot(walk, (fb_graph), layout= layout.davidson.harel, vertex.size=3, curved = F, asp = 0, vertex.label.cex = 0.55, edge.color = rgb(0,0,0,.25), main = "Random Walk")
+```
+
+```{r, include=FALSE}
+set.seed(12)
+# random walk without edges
+plot(walk, (fb_graph), layout= layout.davidson.harel, vertex.size=3, curved = F, asp = 0, vertex.label.cex = 0.55, edge.color = NA)
+```
+
+#### Summary of the Random Walk membership
+```{r, echo=FALSE}
+walk.memb = data.frame(walk$membership)
+summary(walk.memb)
+```
+
+___
+
+## 3) Tell me how many groups each algorithm finds.  Analyze how similar the two partitioning algorithms are in terms of putting nodes into groups with each other.  
+The Girvan-Newman algorithm found 77 total groups whereas the Random Walk algorithm found 66. Let's look at the correlation between the membership groups of each algorithm:
+```{r, echo=FALSE}
+cda <- cbind(memb, walk.memb)
+cor(cda)
+```
+
+The correlation coefficient between the two algorithms is positive and pretty high at 0.83; the two algorithm divide the nodes into pretty similar groups. 
+
+```{r, echo=FALSE}
+compare(gn, walk, method = "nmi")
+```
+It is not a perfect match but the two algorithms are dividing the nodes into pretty similar groups as the value of 0.713 is pretty high. 
+
+___
+
+## 4) Visualize the network (either in R or Gephi), coloring the nodes by either Girvan-Newman grouping or the random walk grouping.
+
+### Girvan-Newman Colored Nodes:
+```{r, echo=FALSE}
+V(fb_graph)$color = gn$membership
+plot( (fb_graph), layout= layout.davidson.harel, vertex.size=3, curved = F, asp = 0, vertex.label.cex = 0.55, vertex.label.color = "black", main = "Nodes colored by Girvan-Newman Grouping")
+```
+
+### Rnadom Walk Colored Nodes:
+```{r, echo=FALSE}
+V(fb_graph)$color = walk$membership
+plot( (fb_graph), layout= layout.davidson.harel, vertex.size=3, curved = F, asp = 0, vertex.label.cex = 0.55, vertex.label.color = "black", main = "Nodes colored by Random Walk Grouping")
+```
+
+___
+
+## 5) Tell me anything else about whether the partitioning makes sense, based on attributes or who the nodes are, and so on.
+
+I will explore the attributes and see how the Grivan-Newman community detection algorithm relates to the gender and year of the students/nodes.
+
+### Adding color for year:
+```{r, echo=FALSE}
+
+V(fb_graph)[V(fb_graph)$year == 2005]$color = "darkgreen"
+V(fb_graph)[V(fb_graph)$year == 2006]$color = "azure4"
+V(fb_graph)[V(fb_graph)$year == 2007]$color = "coral4" #sphere
+V(fb_graph)[V(fb_graph)$year == 2008]$color = "darkolivegreen"
+
+plot(gn, (fb_graph), layout= layout.davidson.harel, vertex.size=3, curved = F, asp = 0, vertex.label.cex = 0.55, vertex.label.color = "white", edge.color = rgb(0,0,0,.25), col = V(fb_graph)$color, main = "Girvan-Newman Grouping with Year")
+legend("topleft", legend=c("2005", "2006", "2007", "2008"),
+       fill=c("darkgreen", "azure4", "coral4", "darkolivegreen"), cex=0.4, 
+       bg = "transparent", title = "Year")
+```
+
+This visualization adds different colors to the nodes for the year they are graduating. There seem to be some grouping that seems congruent with the year the student is in. For example, most of the students graduating in 2008 seem to be more or less in the same groups. Same with the students graduating in 2006. There definitely seem to be a lot of connections between students across the graduating years. We have the least number of nodes for students graduating in 2005- these nodes seem to not be grouped together based on their year of graduation.
+
+
+### Adding shape for gender:
+```{r, echo=FALSE}
+V(fb_graph)$shape = ifelse(V(fb_graph)$gender == 1, "circle", "square")
+V(fb_graph)[V(fb_graph)$year == 2005]$color = "darkgreen"
+V(fb_graph)[V(fb_graph)$year == 2006]$color = "azure4"
+V(fb_graph)[V(fb_graph)$year == 2007]$color = "coral4" #sphere
+V(fb_graph)[V(fb_graph)$year == 2008]$color = "darkolivegreen"
+plot(gn, (fb_graph), layout= layout.davidson.harel, vertex.size=3, curved = F, asp = 0, vertex.label.cex = 0.55, vertex.label.color = "white", edge.color = rgb(0,0,0,.25), col = V(fb_graph)$color, main = "Girvan-Newman Grouping with Gender and Year")
+legend("topleft", legend=c("2005", "2006", "2007", "2008"),
+       fill=c("darkgreen", "azure4", "coral4", "darkolivegreen"), cex=0.4, 
+       bg = "transparent", title = "Year")
+legend( x = "bottomright",
+        legend = c("Female","Male"),
+        col = "black",
+        pch = c(19,15), 
+        bg="transparent",
+        cex = 0.5,
+        title = "Gender")
+```
+
+Based on this visualization, it seems that there seems to be some clustering of the nodes based on their gender, especially in the middle with the most connected nodes. Just by looking at the visualization, it is hard to say whether the gender influences the grouping too much. We see a mix of cross-gender friendship groups as well as same-gender friendships in both small and big groups. There definitely are some bigger groupings that have mostly one gender. 
+
+
+___

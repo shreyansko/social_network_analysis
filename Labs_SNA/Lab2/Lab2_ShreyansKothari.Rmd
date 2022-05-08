@@ -1,0 +1,195 @@
+---
+title: 'Social Network Analysis: Lab 2'
+author: "Shreyans Kothari"
+date: "3/24/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(igraph)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(statnet)
+options(digits=2)
+```
+
+__UNI: SK4819__
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+advice <- read.csv("krackht_advice.csv")
+attr <- read.csv("krackht_attr.csv")
+colnames(advice) <- (1:21)
+```
+
+```{r, echo=FALSE}
+x <- as.matrix(advice)
+degree_x <- graph.adjacency(x, mode ="directed", weighted = NULL)
+advice$degree = igraph::degree(degree_x)
+advice_edges <- E(degree_x)
+advice_vertices <- V(degree_x)
+# to count edges: gsize(degree_x)
+# to count verticies: gorder(degree_x)
+
+# Attach attributes to the vertices of the graph
+V(degree_x)$age = attr$AGE[match(V(degree_x)$name, attr$ID)]
+V(degree_x)$tenure = attr$TENURE[match(V(degree_x)$name, attr$ID)]
+V(degree_x)$level = attr$LEVEL[match(V(degree_x)$name, attr$ID)]
+V(degree_x)$dept = attr$DEPT[match(V(degree_x)$name, attr$ID)]
+
+```
+
+****
+
+#### 1. Describe the social network(s) to me, in terms of how it was collected, what it represents and so forth.  Also give me basic topography of the network: the nature of the ties; direction of ties; overall density; and if attributes are with the network, the distribution of the categories and variables of those attributes.
+The data was collected from managers of a West coast company that manufactured high-tech equipment. The company had about 100 employees and 21 managers. Data was collected on three aspects of social networks regarding the managers: 
+- Whom the managers went to for advice
+- Who was their friend
+- To whom the managers reported
+
+These three 21X21 matrices are non-symmetric and binary. The ties are directed and unvalued. For this lab, I will only be using the directed advice network between the managers. The network density of the directed advice network can be calculated as:
+```{r}
+# Calculating density of the directed network
+max_ties = nrow(advice) * (nrow(advice) - 1) # All potential ties
+actual_ties = gsize(degree_x) # observed ties 
+density_advice = actual_ties/ max_ties
+density_advice
+```
+The density of the advice network is 0.45. The range for a network density is between 0 and 1- the density value of 0.45 is towards the center of that spectrum. The network is neither dense, nor sparse. My suspicion is that managers who have worked at the company for less amount of time (less tenure) or at a lower level tend to seek more advice than those who have worked at the company for longer and/or are at higher levels in the company.
+
+We also have a dataframe on several attributes of the 21 nodes - the managers. It contains information on the managers' age in years, the length of their tenure in years, their level in the corporate hierarchy (1=CEO, 2 = Vice President, 3 = manager), and department (1, 2, 3, 4 or 0 for CEO).
+
+This is the histogram of the age distribution of the nodes in the dataset. We can see that most of the managers are between the ages of 30 and 40. 
+
+```{r, echo=FALSE}
+hist(V(degree_x)$age)
+```
+
+The following histogram depicts tenure- how long a manager has worked at this firm. Most of the managers, according to this visual, had worked at the company only for about 0-15 years. There are about a handful of people who have worked for about 25-20 years. 
+
+```{r, echo=FALSE}
+hist(V(degree_x)$tenure)
+```
+
+****
+
+#### 2. Calculate degree centrality (in- and out-degree, too, if you have such data); closeness centrality; betweenness centrality; and eigenvector centrality.  Correlate those measures of centrality. Highlight which nodes are most central and least central, along different dimensions.  
+
+- `Degree Centrality`: Measures the popularity of a node. It tells us how many other nodes can one particular node reach directly. For undirected ties, degree centrality is calculated as the sum of all ties to alter. Nodes in larger networks could have larger degree centrality just by the virtue of being in a larger network.
+- `In-Degree Centrality`: The sum of all ties directed toward the ego from alters. This is often used as a measure of popularity or prestige.
+- `Out-Degree Centrality`: The sum of all ties directed out from ego to alters. This is often uses as a measure of influence or social activity.
+- `Betweenness Centrality`: The number of shortest paths between any two nodes in the network that pass through the ego. It tells us how likely a person is to be the most direct route between two other people in a network. This is measured using geodesic distance, the length of the shortest path between two nodes. Thus, betweenness centrality is just the number of times a node falls between the geodesic paths of other nodes. If more people have to go through one node to connect with other people, then that node has a lot of power.
+- `Closeness Centrality`: This focuses on the distance of a node to all other nodes in a network via the fewest numbers of indirect ties. The closeness score for someone completely connected to everyone in the network will be closer to 1 than someone who is connected to others through a longer path.
+- `Eigenvector Centrality`: Measure of how well a node is connected to other well-connected people. Weighs ego's centrality by the degree centrality of its alters, thus it takes the entire network into account.
+
+
+```{r}
+# Calculating Centralities 
+
+## Degree Centrality
+d.in <- igraph::degree(degree_x, mode = c("in"), loops = T, normalized = F)
+d.out <- igraph::degree(degree_x, mode = c("out"), loops = T, normalized = F)
+degree <- igraph::degree(degree_x, mode = c("total"), loops = T, normalized = F)  
+
+### Ratio of in-degree and out-degree
+degree_ratio = d.in/d.out
+
+## Closeness Centrality
+close <- igraph::closeness(degree_x, mode = c("all"), normalized = T)
+
+## Betweenness Centrality
+btwn <- igraph::betweenness(degree_x, directed = F)
+
+## Eigenvector Centrality
+egn <- igraph::evcent(degree_x)
+eigen_vec = egn$vector
+
+cb1 <- cbind(d.in, d.out, degree, close, btwn, eigen_vec)
+
+cor(cb1)
+```
+From the correlation table, we see that out-degree centrality is positively correlated with betweenness centrality. Total degree centrality is almost perfectly positively correlated with eigenvector centrality. Closeness and betweenness are also very highly positively correlated. The correlation matrix depicts a negative correlation between in-degree and out-degree centrality- this makes sense to me because most of the times there are a few "experts" at every company who everyone goes to for advice but they rarely seek advice from anyone else.
+
+The following table depicts different measures of centrality for each node, along with the attributes:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+
+df <- data.frame(name = V(degree_x)$name)
+cb2 <- cbind(df, degree, d.in, d.out, close, btwn, eigen_vec, V(degree_x)$age, V(degree_x)$tenure, V(degree_x)$level, V(degree_x)$dept)
+
+#cb2 <- cb2[, c(1:7,29:32)]
+
+cb2 <- rename(cb2, 'age' = `V(degree_x)$age`, 'tenure' = `V(degree_x)$tenure`,
+              'level' = `V(degree_x)$level`, 'dept' = `V(degree_x)$dept`)
+
+cb2
+```
+Based on data from this table, I got the following nodes as most and least central in this advice network:
+
+##### Most Central Nodes:
+- total degree: node 18 (32)
+- In-degree: node 2 (18)
+- Out-degree: node 15 (20)
+- closeness: node 15 (1)
+- betweenness: node 18 (9.15)
+- eigenvector: node 18 (1)
+
+Node 18 seems like the most central node in terms of total degree centrality, betweenness centrality, and eigenvector centrality. The manager who represents node 18 has an extremely high eigenvector centrality, meaning they are well-connected in the network to other well-connected nodes. 
+
+Node 2 has the highest in-degree centrality, meaning they are the most sought out for advice. On the other hand, node 15 has the highest out-degree and closeness centrality, meaning they seek advice the most from a lot of nodes.
+
+##### Least Central Nodes:
+- total degree: node 12 (9)
+- In-degree: node 9, node 13, node 15, and node 19 (4)
+- Out-degree: node 6 (1)
+- closeness: node 12 (0.61)
+- betweenness: node 16 (0.2)
+- eigenvector: node 12 (0.32)
+
+Node 12 seems like the least central node in terms of total degree centrality, closeness centrality, and eigenvector centrality. Nodes 9, 13, 15, and 19 have very low in-degree centrality, meaning only a few people reach out to them for advice. Node 6 has very low out-degree centrality, they don't reach out to others for any advice.
+
+__Most prestigious__ (high in-degree and low out-degree) node is node 2 with 18 managers reaching out to them for advice and they only reach out to 3 other managers for advice. 
+
+****
+
+
+#### 3. If you have a network with attribute data, then state some hypothesis about how an attribute may be related to some (or all of the) measures of centrality.  Explains why you think these two variables should be related.
+I want to test whether a node's tenure is related with the node's In-degree centrality. That is, if the manager has worked at the company for longer, is it more likely that more managers reach out to them for advice, compared to a manager who has worked for less years. Working at a company longer would provide the manager to learn a lot more than those who have worked at that company for less time. It is also more likely that the managers with longer tenure know the ins and outs of the company; they have probably already gone through some obstacles that the new(er) managers would probably be facing, and thus would have a lot more advice to offer.
+
+My hypothesis is that there should be a positive relationship between tenure and in-degree centrality.
+```{r, echo=FALSE}
+summary(lm(d.in~tenure + age + level, data = cb2))
+```
+
+This model showed that tenure is, in fact, positively related with in-degree centrality and that this relationship is statistically significant. In this model, we also see that age and level are also statistically significant with negative coefficients. The model performed quite well- better than expected; it explains about 0.566 of the variance in our outcome variable. 
+
+****
+
+#### 4. In either case, when you are done above, then considers alternate specifications of your variables and codings and decisions and models.  What would you want to consider changing and why. If you can, report on what are the consequences of those changes?
+ 
+In this model, I will look at the interaction between age and level. I do this because I believe there to be a relationship between age of the manager and their level in the hierarchy. People who worked at a higher level in the corporate hierarchy are more likely to be older than those who worked at a lower level in the hierarchy (think CEO or vice president vs managers). 
+
+Additionally, I take the log of tenure because it is skewed towards the lower end. There are more people with less years of tenure and only about 3 people with 25-30 years of tenure.
+```{r}
+# Changing 0  years to 1 year in tenure to be able to take log
+cb2$tenure[13] <- 1 
+
+summary(lm(d.in~log(tenure) +age*level, data = cb2))
+```
+This model overall better fits the data. Taking the log of tenure increases the coefficients statistical significance and also increases the strength of the coefficient to influence in-degree centrality. The interaction term between age and level is positively related with in-degree centrality and is statistical significant with p-value less than 0.05. These changes also improve the adjusted R-sq from 0.566 in the last model to 0.67 in this model- which is a huge jump! 
+ 
+ 
+****
+****
+
+
+#### 5. Lastly, give your best conclusion as to what you learned from your analysis.  Did it make sense, given your initial expectations? Why? Why not?  
+From my analysis, I find that there is a positive and strong relationship between tenure and in-degree centrality. My hypothesis was these two variables would be positively strongly related, and the models did, in fact, conclude this. 
+
+This made complete sense to me, given my initial hypothesis. The longer a person has worked at a company, the more they know about how to solve different challenges that arise. The managers with more years of tenure are in a better position to give advice to managers who have worked for less time at that same company. Additionally, the level of the employee in the corporate hierarchy also affects their ability to give advice to other managers/employees. Not only that, people who are higher up in the level are also more likely to be in a position where other managers who work under them feel comfortable coming to them for advice- and this is what we see in the model: the negative coefficient of level indicates that as your level in the hierarchy increases (as the value reduces from 3 to 1; in the data, a lower value of level indicates a higher level in the hierarchy), your in-degree centrality also increases. 
+
+****
